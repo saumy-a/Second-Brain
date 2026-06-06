@@ -10,7 +10,7 @@ async function suggestTag(content) {
   for (let i = 0; i < maxRetries; i++) {
     try {
       const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
+        model: "gemini-1.5-flash",
         contents: `Classify this content with ONE tag from: idea, reel, article, document, other.\n\nContent: ${content}\n\nReply with just the tag word.`,
       });
       return response.text.trim().toLowerCase();
@@ -44,7 +44,7 @@ async function answerFromContext(question, contextItems, personalityProfile = {}
   const personality = personalityProfile.tone || 'helpful and direct';
   
   const response = await ai.models.generateContent({
-    model: "gemini-2.5-flash",
+    model: "gemini-1.5-flash",
     config: {
       systemInstruction: `You are a personal second brain assistant. Tone: ${personality}. Answer based only on the context provided.`
     },
