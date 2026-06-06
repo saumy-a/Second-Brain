@@ -1,6 +1,6 @@
 const { GoogleGenAI } = require("@google/genai");
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+const ai = new GoogleGenAI(process.env.GEMINI_API_KEY);
 
 // Suggest a tag for any piece of content (with retry and error fallback)
 async function suggestTag(content) {
