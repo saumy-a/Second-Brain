@@ -1,20 +1,36 @@
 const express = require("express");
 const router = express.Router();
-const supabase = require("../services/supabase"); // adjust path if needed
+
+const supabase = require("../services/supabase");
 
 router.get("/", async (req, res) => {
-  const q = req.query.q;
+  try {
+    const q = req.query.q;
 
-  const { data, error } = await supabase
-    .from("items")
-    .select("*")
-    .ilike("content", `%${q}%`);
+    if (!q) {
+      return res.status(400).json({
+        error: "Query required"
+      });
+    }
 
-  if (error) {
-    return res.status(500).json(error);
+    const { data, error } = await supabase
+      .from("items")
+      .select("content,tag,type,created_at")
+      .ilike("content", `%${q}%`)
+      .order("created_at", {
+        ascending: false
+      });
+
+    if (error) throw error;
+
+    res.json(data);
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({
+      error: err.message
+    });
   }
-
-  res.json(data);
 });
 
 module.exports = router;

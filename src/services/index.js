@@ -1,9 +1,9 @@
 const supabase = require("./supabase");
+const telegram = require("./telegram");
+const gemini = require("./gemini");
 
 module.exports = {
   supabase,
-  // Example service function
-  getGreeting: () => {
-    return "Hello from the Service layer!";
-  }
+  telegram,
+  gemini
 };
