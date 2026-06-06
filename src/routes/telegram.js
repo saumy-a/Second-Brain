@@ -48,23 +48,6 @@ router.post('/', async (req, res) => {
     // ── Suggest tag from Gemini ──────────────────────────────
     const suggestedTag = await gemini.suggestTag(parsed.content);
 
-    // ── Generate embedding ───────────────────────────────────
-    const embedding = await gemini.embed(parsed.content);
-
-    // ── Similarity search ──────────────────────────────────────
-    const { data: similar, error: rpcError } = await supabase.rpc('match_items', {
-      query_embedding: embedding,
-      match_threshold: 0.85,
-      match_count: 1,
-      p_user_id: user.id
-    });
-
-    if (rpcError) {
-      console.warn("⚠️ Similarity search failed (check if match_items function exists):", rpcError.message);
-    } else if (similar && similar.length > 0) {
-      await tg.sendSimilarNudge(parsed.chatId, similar[0]);
-    }
-
     // ── Save to database ─────────────────────────────────────
     const { data: item, error: saveError } = await supabase.from('items').insert({
       user_id: user.id,
@@ -72,8 +55,7 @@ router.post('/', async (req, res) => {
       type: parsed.type,
       source_url: parsed.sourceUrl || null,
       tag: suggestedTag,
-      status: 'inbox',
-      embedding: embedding
+      status: 'inbox'
     }).select().single();
 
     if (saveError) throw saveError;

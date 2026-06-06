@@ -9,11 +9,10 @@ async function suggestTag(content) {
 
   for (let i = 0; i < maxRetries; i++) {
     try {
-      const response = await ai.models.generateContent({
-        model: "gemini-1.5-flash",
-        contents: `Classify this content with ONE tag from: idea, reel, article, document, other.\n\nContent: ${content}\n\nReply with just the tag word.`,
+      const response = await ai.getGenerativeModel({ model: "gemini-1.5-flash" }).generateContent({
+        contents: [{ role: "user", parts: [{ text: `Classify this content with ONE tag from: idea, reel, article, document, other.\n\nContent: ${content}\n\nReply with just the tag word.` }] }],
       });
-      return response.text.trim().toLowerCase();
+      return response.response.text().trim().toLowerCase();
     } catch (error) {
       console.error(`Gemini suggestTag error (attempt ${i + 1}/${maxRetries}):`, error.message);
       if (i < maxRetries - 1) {
@@ -28,14 +27,9 @@ async function suggestTag(content) {
 
 // Generate an embedding vector for similarity search
 async function embed(text) {
-  const response = await ai.models.embedContent({
-    model: "text-embedding-004",
-    contents: text,
-    config: {
-      outputDimensionality: 1536
-    }
-  });
-  return response.embeddings[0].values;
+  const model = ai.getGenerativeModel({ model: "text-embedding-004" });
+  const response = await model.embedContent(text);
+  return response.embedding.values;
 }
 
 // Answer a question using saved items as context
@@ -43,15 +37,13 @@ async function answerFromContext(question, contextItems, personalityProfile = {}
   const context = contextItems.map(i => i.content).join('\n---\n');
   const personality = personalityProfile.tone || 'helpful and direct';
   
-  const response = await ai.models.generateContent({
+  const model = ai.getGenerativeModel({ 
     model: "gemini-1.5-flash",
-    config: {
-      systemInstruction: `You are a personal second brain assistant. Tone: ${personality}. Answer based only on the context provided.`
-    },
-    contents: `Context:\n${context}\n\nQuestion: ${question}`
+    systemInstruction: `You are a personal second brain assistant. Tone: ${personality}. Answer based only on the context provided.`
   });
-  
-  return response.text;
+
+  const response = await model.generateContent(`Context:\n${context}\n\nQuestion: ${question}`);
+  return response.response.text();
 }
 
 module.exports = { suggestTag, embed, answerFromContext };
