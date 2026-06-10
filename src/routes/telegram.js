@@ -13,7 +13,7 @@ router.post('/', async (req, res) => {
   try {
     // ── Handle button taps (tag confirmation) ──────────────
     if (update.callback_query) {
-      const { id, data, from, message } = update.callback_query;
+      const { id, data } = update.callback_query;
       if (data.startsWith('tag:')) {
         const [, itemId, tag] = data.split(':');
         const { error } = await supabase.from('items').update({ tag }).eq('id', itemId);
@@ -45,17 +45,40 @@ router.post('/', async (req, res) => {
     // ── Ignore empty messages ────────────────────────────────
     if (!parsed.content) return;
 
-    // ── AI Analysis ──────────────────────────────────────────
+    // ── AI Analysis — decides what to do ─────────────────────
     const analysis = await gemini.analyzeMessage(parsed.content, parsed.type);
     console.log('🧠 AI Analysis:', JSON.stringify(analysis));
 
-    // ── Handle "ignore" — don't save junk ────────────────────
+    // ════════════════════════════════════════════════════════
+    //  CHAT — friendly conversational reply
+    // ════════════════════════════════════════════════════════
+    if (analysis.action === 'chat') {
+      const reply = analysis.reply || await gemini.chatReply(parsed.content);
+      await tg.sendMessage(parsed.chatId, reply);
+      return;
+    }
+
+    // ════════════════════════════════════════════════════════
+    //  SEARCH — find saved items and reply with results
+    // ════════════════════════════════════════════════════════
+    if (analysis.action === 'search') {
+      const query = analysis.search_query || parsed.content;
+      const reply = await gemini.searchAndReply(query, user.id, supabase);
+      await tg.sendMessage(parsed.chatId, reply);
+      return;
+    }
+
+    // ════════════════════════════════════════════════════════
+    //  IGNORE — junk message, reply but don't save
+    // ════════════════════════════════════════════════════════
     if (analysis.action === 'ignore') {
       await tg.sendMessage(parsed.chatId, analysis.reply);
       return;
     }
 
-    // ── Save to database ─────────────────────────────────────
+    // ════════════════════════════════════════════════════════
+    //  SAVE  (+ optional reminder)
+    // ════════════════════════════════════════════════════════
     const { data: item, error: saveError } = await supabase.from('items').insert({
       user_id: user.id,
       content: analysis.content_summary || parsed.content,
@@ -68,7 +91,7 @@ router.post('/', async (req, res) => {
 
     if (saveError) throw saveError;
 
-    // ── Handle "save_and_remind" — create reminder ───────────
+    // ── Reminder? ────────────────────────────────────────────
     if (analysis.action === 'save_and_remind' && analysis.remind_in_minutes) {
       const remindAt = new Date(Date.now() + analysis.remind_in_minutes * 60 * 1000);
 
@@ -76,26 +99,24 @@ router.post('/', async (req, res) => {
         user_id: user.id,
         item_id: item.id,
         remind_at: remindAt.toISOString(),
-        message: analysis.reply,
+        message: 'Time to act on this! ⚡',
         sent: false
       });
 
       if (reminderError) {
         console.error('❌ Error saving reminder:', reminderError.message);
-        await tg.sendMessage(parsed.chatId, `${analysis.reply}\n⚠️ But I couldn't set the reminder.`);
+        await tg.sendMessage(parsed.chatId, `✅ Saved!\n⚠️ But I couldn't set the reminder.`);
       } else {
         await tg.sendMessage(parsed.chatId, analysis.reply);
       }
     } else {
-      // ── Simple save confirmation ─────────────────────────────
-      await tg.sendMessage(parsed.chatId, analysis.reply);
+      await tg.sendMessage(parsed.chatId, analysis.reply || '✅ Saved to your Second Brain.');
     }
 
   } catch (err) {
     console.error("❌ Telegram Webhook Error:", err.message, err.stack);
-    // Optionally notify the user via Telegram
     if (update.message?.chat?.id) {
-      await tg.sendMessage(update.message.chat.id, "⚠️ Sorry, I encountered an error while saving your message.");
+      await tg.sendMessage(update.message.chat.id, "⚠️ Something went wrong. Please try again.");
     }
   }
 });
