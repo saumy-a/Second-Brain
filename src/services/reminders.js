@@ -2,8 +2,8 @@ const cron = require('node-cron');
 const supabase = require('./supabase');
 const tg = require('./telegram');
 
-// Run every 5 minutes, check for due reminders
-cron.schedule('*/5 * * * *', async () => {
+// Run every minute, check for due reminders
+cron.schedule('* * * * *', async () => {
   try {
     const now = new Date().toISOString();
     

@@ -4,6 +4,7 @@ const supabase = require('../services/supabase');
 const gemini = require('../services/gemini');
 const tg = require('../services/telegram');
 const { parseMessage } = require('../utils/parser');
+const { parseReminder } = require('../utils/reminder-parser');
 
 // ── Webhook endpoint ──────────────────────────────────────
 router.post('/', async (req, res) => {
@@ -82,9 +83,35 @@ router.post('/', async (req, res) => {
 
     if (saveError) throw saveError;
 
-    // ── Send simple confirmation (Buttons disabled for now) ──
-    // await tg.sendTagPrompt(parsed.chatId, item.id, suggestedTag);
-    await tg.sendMessage(parsed.chatId, `✅ Saved to your Second Brain.`);
+    // ── Check for reminder intent ──────────────────────────────
+    const reminder = parseReminder(parsed.content);
+    if (reminder.hasReminder) {
+      const { error: reminderError } = await supabase.from('reminders').insert({
+        user_id: user.id,
+        item_id: item.id,
+        chat_id: String(parsed.chatId),
+        remind_at: reminder.remindAt.toISOString(),
+        message: 'Time to act on this!',
+        sent: false
+      });
+
+      if (reminderError) {
+        console.error('❌ Error saving reminder:', reminderError.message);
+        await tg.sendMessage(parsed.chatId, `✅ Saved to your Second Brain.\n⚠️ But I couldn't set the reminder.`);
+      } else {
+        const timeStr = reminder.remindAt.toLocaleString('en-IN', {
+          timeZone: 'Asia/Kolkata',
+          hour: 'numeric',
+          minute: '2-digit',
+          hour12: true,
+          day: 'numeric',
+          month: 'short'
+        });
+        await tg.sendMessage(parsed.chatId, `✅ Saved to your Second Brain.\n⏰ Reminder set for *${timeStr}*`);
+      }
+    } else {
+      await tg.sendMessage(parsed.chatId, `✅ Saved to your Second Brain.`);
+    }
 
   } catch (err) {
     console.error("❌ Telegram Webhook Error:", err.message, err.stack);
