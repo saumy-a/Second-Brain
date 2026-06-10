@@ -45,13 +45,16 @@ router.post('/', async (req, res) => {
     // ── Ignore empty messages ────────────────────────────────
     if (!parsed.content) return;
 
-    // ── Suggest tag from Gemini ──────────────────────────────
-    const suggestedTag = await gemini.suggestTag(parsed.content);
+    // ── Suggest tag from Gemini (Commented out to save session time) ──
+    // const suggestedTag = await gemini.suggestTag(parsed.content);
+    const suggestedTag = 'other'; 
 
-    // ── Generate embedding ───────────────────────────────────
-    const embedding = await gemini.embed(parsed.content);
+    // ── Generate embedding (Commented out to save session time) ──
+    // const embedding = await gemini.embed(parsed.content);
+    const embedding = null;
 
-    // ── Similarity search ──────────────────────────────────────
+    // ── Similarity search (Commented out to save session time) ──
+    /*
     const { data: similar, error: rpcError } = await supabase.rpc('match_items', {
       query_embedding: embedding,
       match_threshold: 0.85,
@@ -64,6 +67,7 @@ router.post('/', async (req, res) => {
     } else if (similar && similar.length > 0) {
       await tg.sendSimilarNudge(parsed.chatId, similar[0]);
     }
+    */
 
     // ── Save to database ─────────────────────────────────────
     const { data: item, error: saveError } = await supabase.from('items').insert({
@@ -78,8 +82,9 @@ router.post('/', async (req, res) => {
 
     if (saveError) throw saveError;
 
-    // ── Send tag confirmation with buttons ───────────────────
-    await tg.sendTagPrompt(parsed.chatId, item.id, suggestedTag);
+    // ── Send simple confirmation (Buttons disabled for now) ──
+    // await tg.sendTagPrompt(parsed.chatId, item.id, suggestedTag);
+    await tg.sendMessage(parsed.chatId, `✅ Saved to your Second Brain.`);
 
   } catch (err) {
     console.error("❌ Telegram Webhook Error:", err.message, err.stack);

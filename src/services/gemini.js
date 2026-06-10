@@ -10,7 +10,7 @@ async function suggestTag(content) {
   for (let i = 0; i < maxRetries; i++) {
     try {
       const response = await ai.models.generateContent({
-        model: "gemini-2.0-flash",
+        model: "gemini-2.0-flash-lite",
         contents: `Classify this content with ONE tag from: idea, reel, article, document, other.\n\nContent: ${content}\n\nReply with just the tag word.`,
       });
       return response.text.trim().toLowerCase();
@@ -29,7 +29,7 @@ async function suggestTag(content) {
 // Generate an embedding vector for similarity search
 async function embed(text) {
   const response = await ai.models.embedContent({
-    model: "text-embedding-004",
+    model: "gemini-embedding-001",
     contents: text,
   });
   return response.embeddings[0].values;
@@ -41,7 +41,7 @@ async function answerFromContext(question, contextItems, personalityProfile = {}
   const personality = personalityProfile.tone || 'helpful and direct';
   
   const response = await ai.models.generateContent({
-    model: "gemini-2.0-flash",
+    model: "gemini-2.0-flash-lite",
     config: {
       systemInstruction: `You are a personal second brain assistant. Tone: ${personality}. Answer based only on the context provided.`,
     },
