@@ -23,6 +23,10 @@ const PORT = process.env.PORT || 3000;
 const searchRoute = require("./routes/search");
 
 app.use("/search", searchRoute);
+
+// Start background services
+require("./services/reminders");
+
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
