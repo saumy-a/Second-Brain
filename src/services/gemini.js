@@ -3,8 +3,109 @@ const { GoogleGenAI } = require("@google/genai");
 const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
 
 /**
+ * Smart local fallback — works without Gemini.
+ * Handles junk filtering, reminder parsing, and basic tag classification.
+ */
+function localAnalyze(content, messageType) {
+  const text = content.trim();
+  const lower = text.toLowerCase();
+
+  // ── Junk filter ───────────────────────────────────────────
+  const isJunk =
+    text.length <= 2 ||
+    /^[a-z]$/i.test(text) ||
+    /^(hi|hey|hello|ok|okay|k|test|lol|haha|yes|no|yep|nope|bye|thanks|thx|ty|np|sure|👍|🙏|❤️)$/i.test(text);
+
+  if (isJunk) {
+    return {
+      action: 'ignore',
+      tag: 'other',
+      remind_in_minutes: null,
+      reply: "That doesn't look like something worth saving 😊",
+      content_summary: null
+    };
+  }
+
+  // ── Reminder detection ────────────────────────────────────
+  const hasRemind = /remind/i.test(lower);
+  let remindMinutes = null;
+
+  if (hasRemind) {
+    // "in X min/minutes/mins"
+    const inMin = lower.match(/in\s+(\d+)\s*min/i);
+    if (inMin) remindMinutes = parseInt(inMin[1]);
+
+    // "in X hour/hours/hr"
+    if (!remindMinutes) {
+      const inHr = lower.match(/in\s+(\d+)\s*h(?:our|r)?s?/i);
+      if (inHr) remindMinutes = parseInt(inHr[1]) * 60;
+    }
+
+    // "at Xpm/Xam/X:00"
+    if (!remindMinutes) {
+      const atTime = lower.match(/at\s+(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/i);
+      if (atTime) {
+        let h = parseInt(atTime[1]);
+        const m = atTime[2] ? parseInt(atTime[2]) : 0;
+        const ampm = atTime[3]?.toLowerCase();
+        if (ampm === 'pm' && h < 12) h += 12;
+        if (ampm === 'am' && h === 12) h = 0;
+        const target = new Date();
+        target.setHours(h, m, 0, 0);
+        if (target <= new Date()) target.setDate(target.getDate() + 1);
+        remindMinutes = Math.round((target - Date.now()) / 60000);
+      }
+    }
+
+    // "tomorrow"
+    if (!remindMinutes && /tomorrow/i.test(lower)) {
+      remindMinutes = 12 * 60; // ~12 hours
+    }
+
+    if (!remindMinutes) remindMinutes = 60; // default 1h if "remind" mentioned
+  }
+
+  // ── Tag classification ────────────────────────────────────
+  let tag = 'other';
+  if (/https?:\/\//i.test(text)) tag = 'article';
+  else if (/idea|think|should|could|maybe|what if/i.test(lower)) tag = 'idea';
+  else if (/reel|video|watch|youtube|instagram/i.test(lower)) tag = 'reel';
+  else if (/doc|document|file|pdf|report/i.test(lower)) tag = 'document';
+
+  // ── Clean content ─────────────────────────────────────────
+  let cleanContent = text
+    .replace(/,?\s*remind me.*/i, '')
+    .replace(/remind me.*/i, '')
+    .trim()
+    || text;
+
+  if (hasRemind && remindMinutes) {
+    const remindAt = new Date(Date.now() + remindMinutes * 60000);
+    const timeStr = remindAt.toLocaleString('en-IN', {
+      timeZone: 'Asia/Kolkata', hour: 'numeric', minute: '2-digit',
+      hour12: true, day: 'numeric', month: 'short'
+    });
+    return {
+      action: 'save_and_remind',
+      tag,
+      remind_in_minutes: remindMinutes,
+      reply: `✅ Saved!\n⏰ I'll remind you at *${timeStr}*`,
+      content_summary: cleanContent
+    };
+  }
+
+  return {
+    action: 'save',
+    tag,
+    remind_in_minutes: null,
+    reply: '✅ Saved to your Second Brain.',
+    content_summary: cleanContent
+  };
+}
+
+/**
  * Analyze a message with AI to determine intent, tag, reminder, and reply.
- * Returns structured JSON with all decisions in one call.
+ * Falls back to local smart analysis if Gemini is unavailable.
  */
 async function analyzeMessage(content, messageType = 'text') {
   const now = new Date();
@@ -67,14 +168,9 @@ Rules:
     }
   }
 
-  // Fallback: save everything if AI fails
-  return {
-    action: 'save',
-    tag: 'other',
-    remind_in_minutes: null,
-    reply: '✅ Saved to your Second Brain.',
-    content_summary: content
-  };
+  // Fallback: use local smart analysis if Gemini fails
+  console.warn('⚠️ Gemini unavailable, using local fallback analysis');
+  return localAnalyze(content, messageType);
 }
 
 // Suggest a tag for any piece of content (with retry and error fallback)
