@@ -4,7 +4,6 @@ const supabase = require('../services/supabase');
 const gemini = require('../services/gemini');
 const tg = require('../services/telegram');
 const { parseMessage } = require('../utils/parser');
-const { parseReminder } = require('../utils/reminder-parser');
 
 // ── Webhook endpoint ──────────────────────────────────────
 router.post('/', async (req, res) => {
@@ -46,71 +45,50 @@ router.post('/', async (req, res) => {
     // ── Ignore empty messages ────────────────────────────────
     if (!parsed.content) return;
 
-    // ── Suggest tag from Gemini (Commented out to save session time) ──
-    // const suggestedTag = await gemini.suggestTag(parsed.content);
-    const suggestedTag = 'other'; 
+    // ── AI Analysis ──────────────────────────────────────────
+    const analysis = await gemini.analyzeMessage(parsed.content, parsed.type);
+    console.log('🧠 AI Analysis:', JSON.stringify(analysis));
 
-    // ── Generate embedding (Commented out to save session time) ──
-    // const embedding = await gemini.embed(parsed.content);
-    const embedding = null;
-
-    // ── Similarity search (Commented out to save session time) ──
-    /*
-    const { data: similar, error: rpcError } = await supabase.rpc('match_items', {
-      query_embedding: embedding,
-      match_threshold: 0.85,
-      match_count: 1,
-      p_user_id: user.id
-    });
-
-    if (rpcError) {
-      console.warn("⚠️ Similarity search failed (check if match_items function exists in Supabase):", rpcError.message);
-    } else if (similar && similar.length > 0) {
-      await tg.sendSimilarNudge(parsed.chatId, similar[0]);
+    // ── Handle "ignore" — don't save junk ────────────────────
+    if (analysis.action === 'ignore') {
+      await tg.sendMessage(parsed.chatId, analysis.reply);
+      return;
     }
-    */
 
     // ── Save to database ─────────────────────────────────────
     const { data: item, error: saveError } = await supabase.from('items').insert({
       user_id: user.id,
-      content: parsed.content,
+      content: analysis.content_summary || parsed.content,
       type: parsed.type,
       source_url: parsed.sourceUrl || null,
-      tag: suggestedTag,
+      tag: analysis.tag,
       status: 'inbox',
-      embedding: embedding
+      embedding: null
     }).select().single();
 
     if (saveError) throw saveError;
 
-    // ── Check for reminder intent ──────────────────────────────
-    const reminder = parseReminder(parsed.content);
-    if (reminder.hasReminder) {
+    // ── Handle "save_and_remind" — create reminder ───────────
+    if (analysis.action === 'save_and_remind' && analysis.remind_in_minutes) {
+      const remindAt = new Date(Date.now() + analysis.remind_in_minutes * 60 * 1000);
+
       const { error: reminderError } = await supabase.from('reminders').insert({
         user_id: user.id,
         item_id: item.id,
-        chat_id: String(parsed.chatId),
-        remind_at: reminder.remindAt.toISOString(),
-        message: 'Time to act on this!',
+        remind_at: remindAt.toISOString(),
+        message: analysis.reply,
         sent: false
       });
 
       if (reminderError) {
         console.error('❌ Error saving reminder:', reminderError.message);
-        await tg.sendMessage(parsed.chatId, `✅ Saved to your Second Brain.\n⚠️ But I couldn't set the reminder.`);
+        await tg.sendMessage(parsed.chatId, `${analysis.reply}\n⚠️ But I couldn't set the reminder.`);
       } else {
-        const timeStr = reminder.remindAt.toLocaleString('en-IN', {
-          timeZone: 'Asia/Kolkata',
-          hour: 'numeric',
-          minute: '2-digit',
-          hour12: true,
-          day: 'numeric',
-          month: 'short'
-        });
-        await tg.sendMessage(parsed.chatId, `✅ Saved to your Second Brain.\n⏰ Reminder set for *${timeStr}*`);
+        await tg.sendMessage(parsed.chatId, analysis.reply);
       }
     } else {
-      await tg.sendMessage(parsed.chatId, `✅ Saved to your Second Brain.`);
+      // ── Simple save confirmation ─────────────────────────────
+      await tg.sendMessage(parsed.chatId, analysis.reply);
     }
 
   } catch (err) {
