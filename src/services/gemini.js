@@ -11,17 +11,36 @@ function localAnalyze(content, messageType) {
   const lower = text.toLowerCase();
 
   // ── Search intent ─────────────────────────────────────────────
-  if (/^(find|search|look|show|get|fetch|what|did i|do i have|have i|recall|remember)/i.test(lower) ||
-      /saved?.*(about|related|on|for)\s+\w/i.test(lower)) {
+  // Catches: "find X", "search for X", "do you remember X", "any X about Y",
+  //          "did I save X", "show me X", "anything about X", "recall X"
+  const isSearch =
+    /^(find|search|look|show me|get|recall|remember)/i.test(lower) ||
+    /^(did i|do i have|have i|can you find|can you show)/i.test(lower) ||
+    /do you (remember|recall|know|have)/i.test(lower) ||
+    /any(thing)?\s+(about|related|on|for|from)\s+/i.test(lower) ||
+    /saved?.*(about|related|on)\s+\w/i.test(lower) ||
+    /what (was|were|did|is|are)\s+(that|the|my|a)\s+/i.test(lower) ||
+    /show (me|my)\s+(all|any|the|saved|past)/i.test(lower);
+
+  if (isSearch) {
+    // Extract the core search terms
     const query = text
-      .replace(/^(find|search|look for|show me|get|recall|remember|did i save|do i have|have i saved?)\s*/i, '')
+      .replace(/^(find|search for|look for|show me|get|recall|remember)\s*/i, '')
+      .replace(/^(did i save|do i have|have i saved?|can you find|can you show me)\s*/i, '')
+      .replace(/^do you (remember|recall|know about|have)\s*/i, '')
+      .replace(/any(thing)?\s+(about|related to|on|for)\s*/i, '')
       .replace(/[?!.]+$/, '')
       .trim();
     return { action: 'search', search_query: query || text, reply: null, tag: 'other', remind_in_minutes: null, content_summary: null };
   }
 
   // ── Chat intent ───────────────────────────────────────────────
-  if (/^(hi|hey|hello|what's up|sup|how are you|good morning|good evening|good night|who are you|what can you do|help|helo|hii|heloo)/i.test(lower)) {
+  const isChat =
+    /^(hi|hey|hello|what's up|sup|how are you|good morning|good evening|good night|helo|hii|heloo|yo|what up|howdy)/i.test(lower) ||
+    /^(who are you|what can you do|help|what do you do|tell me about yourself)/i.test(lower) ||
+    /^(thanks|thank you|thx|awesome|great|cool|nice|wow|amazing)/i.test(lower);
+
+  if (isChat) {
     return { action: 'chat', reply: null, tag: 'other', remind_in_minutes: null, content_summary: null, search_query: null };
   }
 
