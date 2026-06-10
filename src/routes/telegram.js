@@ -82,7 +82,7 @@ router.post('/', async (req, res) => {
     await tg.sendTagPrompt(parsed.chatId, item.id, suggestedTag);
 
   } catch (err) {
-    console.error("❌ Telegram Webhook Error:", err.message);
+    console.error("❌ Telegram Webhook Error:", err.message, err.stack);
     // Optionally notify the user via Telegram
     if (update.message?.chat?.id) {
       await tg.sendMessage(update.message.chat.id, "⚠️ Sorry, I encountered an error while saving your message.");
